@@ -20,6 +20,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -34,6 +37,7 @@ const (
 
 var unknownMarkdownTagRE = regexp.MustCompile(`<unknown\b[^>]*/>`)
 var markdownLinkTrailingSlashRE = regexp.MustCompile(`\((https?://[^)\s]+?)/\)`)
+var notionPrettyURLRE = regexp.MustCompile(`https://www\.notion\.so/[^)\s]*-([0-9a-fA-F]{32})`)
 
 type Client struct {
 	token      string
@@ -519,8 +523,8 @@ func comparableMarkdown(markdown string) string {
 	lines := strings.Split(NormalizeMarkdown(markdown), "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
-		line = strings.TrimRight(line, " \t")
-		if strings.TrimSpace(line) == "" {
+		line = normalizeComparableText(line)
+		if line == "" {
 			continue
 		}
 		out = append(out, line)
@@ -2491,8 +2495,26 @@ func joinSourceInlines(inlines []Inline) string {
 }
 
 func normalizeComparableText(text string) string {
-	text = strings.TrimSpace(text)
-	return markdownLinkTrailingSlashRE.ReplaceAllString(text, "($1)")
+	text = normalizeComparableLine(text)
+	text = markdownLinkTrailingSlashRE.ReplaceAllString(text, "($1)")
+	text = notionPrettyURLRE.ReplaceAllString(text, "https://www.notion.so/$1")
+	return text
+}
+
+func normalizeComparableLine(line string) string {
+	line = norm.NFC.String(line)
+	line = strings.Map(func(r rune) rune {
+		switch r {
+		case '\u200b', '\u200c', '\u200d', '\ufeff':
+			return -1
+		}
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, line)
+	line = strings.TrimSpace(line)
+	return strings.Join(strings.Fields(line), " ")
 }
 
 func markdownDiffSummary(expected string, actual string) string {

@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestUpdateDocumentUsesMarkdownReplaceByDefault(t *testing.T) {
@@ -75,6 +77,86 @@ func TestUpdateDocumentUsesMarkdownReplaceByDefault(t *testing.T) {
 	body, _ := payload["replace_content"].(map[string]any)
 	if got := body["new_str"]; got != "# Live page\n\nFresh content" {
 		t.Fatalf("new_str = %#v", got)
+	}
+}
+
+func TestUpdateDocumentNormalizesUnicodeDuringMarkdownVerification(t *testing.T) {
+	const bodyText = "Zażółć gęślą jaźń"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pages/live-page", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"properties":{"title":{"type":"title","title":[{"plain_text":"Live page"}]}}}`))
+		case http.MethodPatch:
+			_, _ = w.Write([]byte(`{"id":"live-page"}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	})
+	mux.HandleFunc("/v1/pages/live-page/markdown", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"id":"live-page","markdown":"` + escapeJSON("# Live page\n\n"+norm.NFD.String(bodyText)) + `","truncated":false,"unknown_block_ids":[]}`))
+		case http.MethodPatch:
+			_, _ = w.Write([]byte(`{"id":"live-page","markdown":"` + escapeJSON("# Live page\n\n"+norm.NFD.String(bodyText)) + `","truncated":false,"unknown_block_ids":[]}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	doc, err := ParseMarkdown("# Manual\n\n" + bodyText)
+	if err != nil {
+		t.Fatalf("ParseMarkdown() error = %v", err)
+	}
+
+	client := NewClient("token", server.Client(), server.URL+"/v1")
+	if _, err := client.UpdateDocument(context.Background(), "live-page", doc, false, false); err != nil {
+		t.Fatalf("UpdateDocument() error = %v", err)
+	}
+}
+
+func TestUpdateDocumentCanonicalizesNotionPrettyURLsDuringMarkdownVerification(t *testing.T) {
+	const pageID = "0123456789abcdef0123456789abcdef"
+	expectedBody := "See [Spec](https://www.notion.so/Nazwa-strony-" + pageID + ")"
+	actualBody := "See [Spec](https://www.notion.so/" + pageID + ")"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/pages/live-page", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"properties":{"title":{"type":"title","title":[{"plain_text":"Live page"}]}}}`))
+		case http.MethodPatch:
+			_, _ = w.Write([]byte(`{"id":"live-page"}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	})
+	mux.HandleFunc("/v1/pages/live-page/markdown", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"id":"live-page","markdown":"` + escapeJSON("# Live page\n\n"+actualBody) + `","truncated":false,"unknown_block_ids":[]}`))
+		case http.MethodPatch:
+			_, _ = w.Write([]byte(`{"id":"live-page","markdown":"` + escapeJSON("# Live page\n\n"+actualBody) + `","truncated":false,"unknown_block_ids":[]}`))
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	doc, err := ParseMarkdown("# Manual\n\n" + expectedBody)
+	if err != nil {
+		t.Fatalf("ParseMarkdown() error = %v", err)
+	}
+
+	client := NewClient("token", server.Client(), server.URL+"/v1")
+	if _, err := client.UpdateDocument(context.Background(), "live-page", doc, false, false); err != nil {
+		t.Fatalf("UpdateDocument() error = %v", err)
 	}
 }
 
