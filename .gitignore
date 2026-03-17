@@ -1,0 +1,38 @@
+# Go build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+coverage.out
+cover.out
+
+# Project binaries and temp build artifacts
+/notion-agent-connector
+/.tmp/
+/bin/
+/dist/
+
+# Environment and local tool state
+.env
+.env.*
+.envrc
+.direnv/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.fseventsd
+
+# Linux and general editor backup files
+*~
+.nfs*

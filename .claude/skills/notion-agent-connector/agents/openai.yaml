@@ -1,0 +1,4 @@
+interface:
+  display_name: "Notion Agent Connector"
+  short_description: "High-fidelity Notion page and row ops"
+  default_prompt: "Use $notion-agent-connector to inspect or update Notion pages, sections, media-rich markdown, data sources, and row properties with the shared connector CLI."
